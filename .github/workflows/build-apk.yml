@@ -1,5 +1,50 @@
-- name: Build Arjuna APK
-  working-directory: extracted/arjuna-offline-upgrade-v1/android-wrapper
-  run: |
-    chmod +x ./gradlew
-    ./gradlew --no-daemon --stacktrace assembleDebug
+name: Build Arjuna Android APK
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'arjuna-offline-upgrade-v1.zip'
+      - '.github/workflows/build-apk.yml'
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Extract Arjuna project
+        run: |
+          unzip -q arjuna-offline-upgrade-v1.zip -d extracted
+          test -d extracted/arjuna-offline-upgrade-v1/android-wrapper
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK packages
+        run: |
+          sdkmanager --install \
+            "platform-tools" \
+            "platforms;android-35" \
+            "build-tools;35.0.0"
+
+      - name: Build Arjuna APK
+        working-directory: extracted/arjuna-offline-upgrade-v1/android-wrapper
+        run: |
+          chmod +x ./gradlew
+          ./gradlew --no-daemon --stacktrace assembleDebug
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Arjuna-Android-APK
+          path: extracted/arjuna-offline-upgrade-v1/android-wrapper/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
