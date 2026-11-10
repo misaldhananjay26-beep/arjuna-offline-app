@@ -22,14 +22,15 @@ jobs:
           mkdir -p extracted
           unzip -q -o arjuna-offline-upgrade-v1.zip -d extracted
 
-          PROJECT_DIR=$(find extracted -type d -name android-wrapper | head -n 1)
-          if [ -z "$PROJECT_DIR" ]; then
-            echo "Could not find android-wrapper inside the zip archive."
-            find extracted -maxdepth 4 -print
+          GRADLEW_PATH=$(find extracted -type f -name gradlew | head -n 1 || true)
+
+          if [ -z "$GRADLEW_PATH" ]; then
+            echo "Could not find gradlew anywhere inside the zip archive."
+            find extracted -maxdepth 6 -print
             exit 1
           fi
 
-          test -f "$PROJECT_DIR/gradlew"
+          PROJECT_DIR=$(dirname "$GRADLEW_PATH")
           echo "ANDROID_PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
 
       - name: Set up Java
