@@ -1,3 +1,84 @@
+
+name: Build Arjuna Android APK
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'arjuna-offline-upgrade-v1.zip'
+      - '.github/workflows/build-apk.yml'
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Extract project
+        run: |
+          unzip -q arjuna-offline-upgrade-v1.zip -d extracted
+          PROJECT="$GITHUB_WORKSPACE/extracted/arjuna-offline-upgrade-v1/android-wrapper"
+
+          test -f "$PROJECT/settings.gradle"
+          test -f "$PROJECT/app/build.gradle"
+          echo "PROJECT_DIR=$PROJECT" >> "$GITHUB_ENV"
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Install Android SDK
+        run: |
+          SDK_ROOT="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          SDKMANAGER=$(find "$SDK_ROOT/cmdline-tools" \
+            -type f -name sdkmanager | sort -V | tail -n 1)
+
+          if [ -z "$SDKMANAGER" ]; then
+            echo "SDK manager not found"
+            exit 1
+          fi
+
+          yes | "$SDKMANAGER" --licenses || true
+
+          "$SDKMANAGER" --install \
+            "platform-tools" \
+            "platforms;android-35" \
+            "build-tools;35.0.0"
+
+      - name: Fix Kotlin dependency versions
+        run: |
+          cat >> "$PROJECT_DIR/app/build.gradle" <<'EOF'
+
+          configurations.configureEach {
+              resolutionStrategy.eachDependency {
+                  if (requested.group == 'org.jetbrains.kotlin') {
+                      useVersion '1.8.22'
+                  }
+              }
+          }
+          EOF
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Build APK
+        run: |
+          gradle --no-daemon \
+            -p "$PROJECT_DIR" \
+            clean assembleDebug
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Arjuna-Android-APK
+          path: ${{ github.workspace }}/extracted/arjuna-offline-upgrade-v1/android-wrapper/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
 name: Build Arjuna Android APK
 
 on:
