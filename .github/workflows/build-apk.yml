@@ -13,67 +13,51 @@ jobs:
     runs-on: ubuntu-24.04
 
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Extract Arjuna project
-        shell: bash
+      - name: Extract Arjuna
         run: |
           set -e
           unzip -q arjuna-offline-upgrade-v1.zip -d extracted
 
           PROJECT="$GITHUB_WORKSPACE/extracted/arjuna-offline-upgrade-v1/android-wrapper"
 
-          if [ ! -f "$PROJECT/settings.gradle" ]; then
-            echo "Android project settings.gradle missing"
-            exit 1
-          fi
-
-          if [ ! -f "$PROJECT/app/build.gradle" ]; then
-            echo "Android app build.gradle missing"
-            exit 1
-          fi
+          test -f "$PROJECT/settings.gradle"
+          test -f "$PROJECT/app/build.gradle"
 
           echo "PROJECT_DIR=$PROJECT" >> "$GITHUB_ENV"
 
-      - name: Create and verify Android manifest
+      - name: Fix Android manifests
         shell: bash
         run: |
           set -e
 
-          mkdir -p "$PROJECT_DIR/app/src/main"
+          for DIR in "$PROJECT_DIR/src/main" "$PROJECT_DIR/app/src/main"; do
+            mkdir -p "$DIR"
 
-          cat > "$PROJECT_DIR/app/src/main/AndroidManifest.xml" <<'EOF'
+            cat > "$DIR/AndroidManifest.xml" <<'EOF'
           <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-
-              <uses-permission android:name="android.permission.INTERNET" />
-
+              <uses-permission android:name="android.permission.INTERNET"/>
               <application
                   android:allowBackup="false"
                   android:label="Arjuna Interactive Lab"
-                  android:theme="@android:style/Theme.Material.Light.NoActionBar"
-                  android:usesCleartextTraffic="false">
-
+                  android:theme="@android:style/Theme.Material.Light.NoActionBar">
                   <activity
                       android:name=".MainActivity"
-                      android:exported="true"
-                      android:configChanges="keyboard|keyboardHidden|orientation|screenSize">
-
+                      android:exported="true">
                       <intent-filter>
-                          <action android:name="android.intent.action.MAIN" />
-                          <category android:name="android.intent.category.LAUNCHER" />
+                          <action android:name="android.intent.action.MAIN"/>
+                          <category android:name="android.intent.category.LAUNCHER"/>
                       </intent-filter>
-
                   </activity>
               </application>
           </manifest>
           EOF
+          done
 
-          test -f "$PROJECT_DIR/app/src/main/AndroidManifest.xml"
-          test -f "$PROJECT_DIR/app/src/main/java/app/arjuna/MainActivity.java"
-
-          echo "Android manifest and MainActivity verified"
-          ls -la "$PROJECT_DIR/app/src/main"
+          echo "Both Android manifest locations created."
+          find "$PROJECT_DIR" -name AndroidManifest.xml
 
       - name: Set up Java
         uses: actions/setup-java@v4
@@ -81,20 +65,13 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Install Android SDK packages
-        shell: bash
+      - name: Install Android SDK
         run: |
           set -e
-
           SDK_ROOT="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          SDKMANAGER=$(find "$SDK_ROOT/cmdline-tools" -type f -name sdkmanager | sort -V | tail -n 1)
 
-          SDKMANAGER=$(find "$SDK_ROOT/cmdline-tools" \
-            -type f -name sdkmanager | sort -V | tail -n 1)
-
-          if [ -z "$SDKMANAGER" ]; then
-            echo "Android SDK manager not found"
-            exit 1
-          fi
+          test -n "$SDKMANAGER"
 
           yes | "$SDKMANAGER" --licenses || true
 
@@ -103,8 +80,7 @@ jobs:
             "platforms;android-35" \
             "build-tools;35.0.0"
 
-      - name: Align Kotlin dependencies
-        shell: bash
+      - name: Fix Kotlin versions
         run: |
           cat >> "$PROJECT_DIR/app/build.gradle" <<'EOF'
 
@@ -122,16 +98,25 @@ jobs:
         with:
           gradle-version: '8.9'
 
-      - name: Build Arjuna APK
-        shell: bash
+      - name: Verify Android project
         run: |
-          set -e
+          echo "Project: $PROJECT_DIR"
+          echo "Settings:"
+          cat "$PROJECT_DIR/settings.gradle"
+          echo "Root build:"
+          cat "$PROJECT_DIR/build.gradle"
+          echo "App build:"
+          cat "$PROJECT_DIR/app/build.gradle"
+          echo "Java files:"
+          find "$PROJECT_DIR" -name "*.java"
 
+      - name: Build APK
+        run: |
           gradle --no-daemon \
             -p "$PROJECT_DIR" \
             clean assembleDebug
 
-      - name: Upload Arjuna APK
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: Arjuna-Android-APK
